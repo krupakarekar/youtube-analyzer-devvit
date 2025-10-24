@@ -234,7 +234,12 @@ async function analyzeVideoWithTranscript(videoId: string): Promise<YouTubeAnaly
   } catch (error) {
     console.error('Error in analyzeVideoWithTranscript:', error);
     
-    // If transcript fails, fall back to metadata-based analysis
+    // Return error object
+    return {
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    };
+    
+    // Commented out fallback analysis for now
     // console.log('Attempting fallback to metadata-based analysis...');
     // try {
     //   const videoInfo = await getYouTubeVideoInfo(videoId);
