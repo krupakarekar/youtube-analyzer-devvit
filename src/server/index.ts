@@ -357,13 +357,13 @@ async function parseAnalysisResult(analysis: string, videoId: string): Promise<Y
       toxicityScore: toxicityScore,
       biasTags: biasTags,
       emotions: {
-        anger: 0.3,
-        joy: 0.4,
-        trust: 0.5,
-        fear: 0.2,
-        sadness: 0.3,
-        surprise: 0.4,
-        disgust: 0.2
+        anger: 0.1,
+        joy: 0.1,
+        trust: 0.1,
+        fear: 0.1,
+        sadness: 0.1,
+        surprise: 0.1,
+        disgust: 0.1
       }
     };
 
@@ -379,13 +379,13 @@ async function parseAnalysisResult(analysis: string, videoId: string): Promise<Y
       toxicityScore: 5,
       biasTags: ['Unknown'],
       emotions: {
-        anger: 0.3,
-        joy: 0.4,
-        trust: 0.5,
-        fear: 0.2,
-        sadness: 0.3,
-        surprise: 0.4,
-        disgust: 0.2
+        anger: 0.1,
+        joy: 0.1,
+        trust: 0.1,
+        fear: 0.1,
+        sadness: 0.1,
+        surprise: 0.1,
+        disgust: 0.1
       }
     };
   }
@@ -419,7 +419,11 @@ async function getYouTubeVideoInfo(videoId: string) {
       title: video.snippet.title,
       channelName: video.snippet.channelTitle,
       publishDate: video.snippet.publishedAt,
-      thumbnail: video.snippet.thumbnails.maxres?.url || video.snippet.thumbnails.high?.url || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+      thumbnail: video.snippet.thumbnails.maxres?.url || 
+                 video.snippet.thumbnails.high?.url || 
+                 video.snippet.thumbnails.standard?.url || 
+                 video.snippet.thumbnails.default?.url || 
+                 `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
       description: video.snippet.description,
     };
   } catch (error) {
@@ -453,7 +457,7 @@ Description: ${videoInfo.description?.substring(0, 1000) || 'No description avai
 Please provide:
 1. Toxicity score (0-10, where 10 is highly toxic)
 2. Bias assessment (types of bias detected)
-3. Emotional impact analysis (anger, joy, trust, fear, sadness, surprise, disgust)
+3. Emotional impact analysis (provide values between 0 and 1 for: anger, joy, trust, fear, sadness, surprise, disgust)
 
 Format your response as JSON with these fields:
 {
@@ -561,13 +565,13 @@ Format your response as JSON with these fields:
       toxicityScore: 5,
       biasTags: ['Analysis Unavailable'],
       emotions: {
-        anger: 0.3,
-        joy: 0.4,
-        trust: 0.5,
-        fear: 0.2,
-        sadness: 0.3,
-        surprise: 0.4,
-        disgust: 0.2
+        anger: 0.1,
+        joy: 0.1,
+        trust: 0.1,
+        fear: 0.1,
+        sadness: 0.1,
+        surprise: 0.1,
+        disgust: 0.1
       }
     };
   }
