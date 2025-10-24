@@ -9,3 +9,5 @@ yarn-error.log*
 webroot
 dist
 .env
+devvit.local.json
+devvit.json

@@ -1,8 +1,8 @@
 import express from 'express';
 import { InitResponse, IncrementResponse, DecrementResponse, YouTubeAnalysisResult } from '../shared/types/api';
-import { redis, reddit, createServer, context, getServerPort } from '@devvit/web/server';
+import { redis, reddit, createServer, context, getServerPort, settings } from '@devvit/web/server';
 import { createPost } from './core/post';
-const { YoutubeTranscript } = require('youtube-transcript');
+import { YoutubeTranscript } from 'youtube-transcript';
 
 const app = express();
 
@@ -235,25 +235,26 @@ async function analyzeVideoWithTranscript(videoId: string): Promise<YouTubeAnaly
     console.error('Error in analyzeVideoWithTranscript:', error);
     
     // If transcript fails, fall back to metadata-based analysis
-    console.log('Attempting fallback to metadata-based analysis...');
-    try {
-      const videoInfo = await getYouTubeVideoInfo(videoId);
-      const fallbackAnalysis = await analyzeVideoContent(videoId, videoInfo);
-      return fallbackAnalysis;
-    } catch (fallbackError) {
-      console.error('Fallback analysis also failed:', fallbackError);
-      return {
-        error: `Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-      };
-    }
+    // console.log('Attempting fallback to metadata-based analysis...');
+    // try {
+    //   const videoInfo = await getYouTubeVideoInfo(videoId);
+    //   const fallbackAnalysis = await analyzeVideoContent(videoId, videoInfo);
+    //   return fallbackAnalysis;
+    // } catch (fallbackError) {
+    //   console.error('Fallback analysis also failed:', fallbackError);
+    //   return {
+    //     error: `Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+    //   };
+    // }
   }
 }
 
 // OpenAI analysis function (converted from Python)
 async function analyzeContent(transcriptText: string): Promise<string> {
-  const openaiApiKey = process.env.OPENAI_API_KEY;
+  // Access API key from Devvit settings
+  const openaiApiKey = await settings.get<string>('openaiApiKey');
   if (!openaiApiKey) {
-    throw new Error('OpenAI API key not configured');
+    throw new Error('OpenAI API key not configured. Set it using: npx devvit settings set openaiApiKey');
   }
 
   const prompt = `Analyze the following YouTube video transcript for:
@@ -379,9 +380,9 @@ function parseAnalysisResult(analysis: string, videoId: string): YouTubeAnalysis
 async function getYouTubeVideoInfo(videoId: string) {
   try {
     // Use YouTube Data API v3 to get video information
-    const apiKey = process.env.YOUTUBE_API_KEY;
+    const apiKey = await settings.get<string>('youtubeApiKey');
     if (!apiKey) {
-      throw new Error('YouTube API key not configured');
+      throw new Error('YouTube API key not configured. Set it using: npx devvit settings set youtubeApiKey');
     }
 
     const response = await fetch(
@@ -422,9 +423,9 @@ async function getYouTubeVideoInfo(videoId: string) {
 // Helper function to analyze video content using OpenAI (fallback)
 async function analyzeVideoContent(videoId: string, videoInfo: any): Promise<YouTubeAnalysisResult> {
   try {
-    const openaiApiKey = process.env.OPENAI_API_KEY;
+    const openaiApiKey = await settings.get<string>('openaiApiKey');
     if (!openaiApiKey) {
-      throw new Error('OpenAI API key not configured');
+      throw new Error('OpenAI API key not configured. Set it using: npx devvit settings set openaiApiKey');
     }
 
     // Create analysis prompt

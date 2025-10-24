@@ -1,6 +1,20 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
   "name": "yt-analyzer",
+  "settings": {
+    "global": {
+      "openaiApiKey": {
+        "type": "string",
+        "label": "OpenAI API Key",
+        "isSecret": true
+      },
+      "youtubeApiKey": {
+        "type": "string",
+        "label": "YouTube Data API Key",
+        "isSecret": true
+      }
+    }
+  },
   "post": {
     "dir": "dist/client",
     "entrypoints": {
