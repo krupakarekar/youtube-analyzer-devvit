@@ -179,7 +179,7 @@ async function analyzeVideoWithTranscript(videoId: string): Promise<YouTubeAnaly
   try {
     console.log(`🎥 Video ID: ${videoId}`);
     console.log('='.repeat(80));
-    
+
     // Fetch transcript using JavaScript package
     console.log('\n📥 Fetching transcript...');
     let transcript;
@@ -188,32 +188,36 @@ async function analyzeVideoWithTranscript(videoId: string): Promise<YouTubeAnaly
       console.log('✅ Transcript fetch successful');
     } catch (transcriptError) {
       console.error('❌ Transcript fetch failed:', transcriptError);
-      throw new Error(`Failed to fetch transcript: ${transcriptError instanceof Error ? transcriptError.message : 'Unknown error'}`);
+      // Try fallback to metadata-based analysis
+      console.log('⚠️ Attempting fallback to metadata-based analysis...');
+      return await fallbackToMetadataAnalysis(videoId, transcriptError);
     }
-    
+
     console.log(`\n✅ Transcript retrieved: ${transcript.length} entries`);
-    
+
     // Check if transcript is empty
     if (transcript.length === 0) {
       console.log('⚠️ No transcript available for this video');
-      throw new Error('No transcript available for this video. The video may not have captions or transcripts enabled.');
+      // Try fallback to metadata-based analysis
+      console.log('⚠️ Attempting fallback to metadata-based analysis...');
+      return await fallbackToMetadataAnalysis(videoId, new Error('No transcript available'));
     }
-    
+
     // Show first few entries
     console.log('\n📜 First 10 entries of transcript:');
     console.log('-'.repeat(80));
     transcript.slice(0, 10).forEach((entry: any) => {
       console.log(`[${entry.offset}s] ${entry.text}`);
     });
-    
+
     // Get full transcript text
     const fullText = getFullTranscriptText(transcript);
     console.log(`\n📊 Total transcript length: ${fullText.length} characters`);
-    
+
     // Analyze content with OpenAI
     console.log('\n🔍 Analyzing content with AI...');
     console.log('='.repeat(80));
-    
+
     let analysis;
     try {
       analysis = await analyzeContent(fullText);
@@ -222,35 +226,37 @@ async function analyzeVideoWithTranscript(videoId: string): Promise<YouTubeAnaly
       console.error('❌ OpenAI analysis failed:', analysisError);
       throw new Error(`OpenAI analysis failed: ${analysisError instanceof Error ? analysisError.message : 'Unknown error'}`);
     }
-    
+
     console.log('\n🤖 AI ANALYSIS RESULTS:');
     console.log('='.repeat(80));
     console.log(analysis);
     console.log('='.repeat(80));
-    
+
     // Parse analysis and return structured result
-    return parseAnalysisResult(analysis, videoId);
-    
+    return await parseAnalysisResult(analysis, videoId);
+
   } catch (error) {
     console.error('Error in analyzeVideoWithTranscript:', error);
-    
+
     // Return error object
     return {
       error: error instanceof Error ? error.message : 'Unknown error occurred'
     };
-    
-    // Commented out fallback analysis for now
-    // console.log('Attempting fallback to metadata-based analysis...');
-    // try {
-    //   const videoInfo = await getYouTubeVideoInfo(videoId);
-    //   const fallbackAnalysis = await analyzeVideoContent(videoId, videoInfo);
-    //   return fallbackAnalysis;
-    // } catch (fallbackError) {
-    //   console.error('Fallback analysis also failed:', fallbackError);
-    //   return {
-    //     error: `Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-    //   };
-    // }
+  }
+}
+
+// Fallback function for metadata-based analysis when transcript is unavailable
+async function fallbackToMetadataAnalysis(videoId: string, originalError: any): Promise<YouTubeAnalysisResult | { error: string }> {
+  try {
+    console.log('📋 Fetching video metadata for fallback analysis...');
+    const videoInfo = await getYouTubeVideoInfo(videoId);
+    const fallbackAnalysis = await analyzeVideoContent(videoId, videoInfo);
+    return fallbackAnalysis;
+  } catch (fallbackError) {
+    console.error('❌ Fallback analysis also failed:', fallbackError);
+    return {
+      error: `Analysis failed: ${originalError instanceof Error ? originalError.message : 'Unknown error'}. Fallback also failed: ${fallbackError instanceof Error ? fallbackError.message : 'Unknown error'}`
+    };
   }
 }
 
@@ -316,8 +322,12 @@ Format your response as a structured analysis.`;
 }
 
 // Parse analysis result into structured JSON (converted from Python)
-function parseAnalysisResult(analysis: string, videoId: string): YouTubeAnalysisResult {
+async function parseAnalysisResult(analysis: string, videoId: string): Promise<YouTubeAnalysisResult> {
   try {
+    // Fetch video metadata
+    console.log('📋 Fetching video metadata...');
+    const videoInfo = await getYouTubeVideoInfo(videoId);
+
     // Extract toxicity score from analysis text
     let toxicityScore = 5; // Default score
     if (analysis.toLowerCase().includes('toxicity score')) {
@@ -326,7 +336,7 @@ function parseAnalysisResult(analysis: string, videoId: string): YouTubeAnalysis
         toxicityScore = parseInt(scoreMatch[1]);
       }
     }
-    
+
     // Extract bias tags
     const biasTags: string[] = [];
     const analysisLower = analysis.toLowerCase();
@@ -336,14 +346,14 @@ function parseAnalysisResult(analysis: string, videoId: string): YouTubeAnalysis
       if (analysisLower.includes('gender')) biasTags.push('Gender');
       if (analysisLower.includes('racial')) biasTags.push('Racial');
     }
-    
-    // Create structured result
+
+    // Create structured result with real video metadata
     return {
       videoId: videoId,
-      title: `Video ${videoId}`,
-      channelName: 'Unknown Channel',
-      publishDate: new Date().toISOString(),
-      thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+      title: videoInfo.title,
+      channelName: videoInfo.channelName,
+      publishDate: videoInfo.publishDate,
+      thumbnail: videoInfo.thumbnail,
       toxicityScore: toxicityScore,
       biasTags: biasTags,
       emotions: {
@@ -356,7 +366,7 @@ function parseAnalysisResult(analysis: string, videoId: string): YouTubeAnalysis
         disgust: 0.2
       }
     };
-    
+
   } catch (error) {
     console.error('Error creating structured result:', error);
     // Fallback to simple result
