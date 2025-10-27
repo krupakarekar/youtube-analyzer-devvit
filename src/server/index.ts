@@ -2,7 +2,7 @@ import express from 'express';
 import { InitResponse, IncrementResponse, DecrementResponse, YouTubeAnalysisResult } from '../shared/types/api';
 import { redis, reddit, createServer, context, getServerPort, settings } from '@devvit/web/server';
 import { createPost } from './core/post';
-import { fetchTranscript } from '../lib/youtube-transcript-fetcher/dist/transcript';
+import { fetchTranscript } from '@egoist/youtube-transcript-plus';
 
 const app = express();
 
@@ -190,18 +190,24 @@ async function analyzeVideoWithTranscript(videoId: string): Promise<YouTubeAnaly
     console.log('\n📥 Fetching transcript...');
     let transcript;
     try {
-      // Use the new transcript fetcher
-      transcript = await fetchTranscript(videoId);
-      console.log('✅ Transcript fetch successful');
-
-      // The new library returns an array of transcript items with text, duration, and offset
-      if (!transcript || transcript.length === 0) {
+      // Use youtube-transcript-plus to fetch transcript
+      const response = await fetchTranscript(videoId);
+      
+      if (!response || !response.segments || response.segments.length === 0) {
         console.log('⚠️ No transcript available for this video');
         // Try fallback to metadata-based analysis
         console.log('⚠️ Attempting fallback to metadata-based analysis...');
         return await fallbackToMetadataAnalysis(videoId, new Error('No transcript available'));
       }
 
+      // Map the response segments to our TranscriptItem interface
+      transcript = response.segments.map((segment: { text: string; duration: number; offset: number }) => ({
+        text: segment.text,
+        duration: segment.duration,
+        offset: segment.offset
+      }));
+      
+      console.log('✅ Transcript fetch successful');
       console.log(`\n✅ Transcript retrieved: ${transcript.length} entries`);
     } catch (transcriptError) {
       console.error('❌ Transcript fetch failed:', transcriptError);

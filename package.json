@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@devvit/web": "0.12.1",
+    "@egoist/youtube-transcript-plus": "^1.1.2",
     "clsx": "2.1.1",
     "devvit": "0.12.1",
     "express": "5.1.0",
