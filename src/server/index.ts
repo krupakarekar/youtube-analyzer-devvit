@@ -227,13 +227,19 @@ async function analyzeVideoWithTranscript(videoId: string): Promise<YouTubeAnaly
     const fullText = getFullTranscriptText(transcript);
     console.log(`\n📊 Total transcript length: ${fullText.length} characters`);
 
+    // Limit transcript length to avoid long processing times (max 3000 chars)
+    const limitedText = fullText.substring(0, 3000);
+    if (fullText.length > 3000) {
+      console.log(`⚠️ Transcript truncated from ${fullText.length} to 3000 characters`);
+    }
+
     // Analyze content with OpenAI
     console.log('\n🔍 Analyzing content with AI...');
     console.log('='.repeat(80));
 
     let analysis;
     try {
-      analysis = await analyzeContent(fullText);
+      analysis = await analyzeContent(limitedText);
       console.log('✅ OpenAI analysis successful');
     } catch (analysisError) {
       console.error('❌ OpenAI analysis failed:', analysisError);
@@ -255,7 +261,6 @@ async function analyzeVideoWithTranscript(videoId: string): Promise<YouTubeAnaly
       error: error instanceof Error ? error.message : 'Unknown error occurred'
     };
   }
-}
 }
 
 // Fallback function for metadata-based analysis when transcript is unavailable
@@ -306,18 +311,21 @@ async function analyzeContent(transcriptText: string): Promise<string> {
 2. **Bias**: Identify any political, cultural, gender, racial, or ideological biases
 3. **Misinformation**: Look for false claims, misleading statements, or unverified facts
 
-Transcript:
-${transcriptText.substring(0, 4000)}
+Transcript (first ~3000 characters):
+${transcriptText}
 
-Please provide:
-- A toxicity score (0-10, where 10 is highly toxic)
-- A bias assessment (types of bias detected and severity)
-- A misinformation assessment (potential false claims identified)
-- An overall summary
+Please provide a brief analysis with:
+- Toxicity score (0-10, where 10 is highly toxic)
+- Bias types detected (if any)
+- Key concerns (if any)
 
-Format your response as a structured analysis.`;
+Keep the response concise.`;
 
   try {
+    // Create an AbortController with a 15 second timeout (reduced for faster response)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -325,11 +333,11 @@ Format your response as a structured analysis.`;
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4',
+        model: 'gpt-3.5-turbo',  // Changed from gpt-4 for much faster responses
         messages: [
           {
             role: 'system',
-            content: 'You are an expert content moderator analyzing video transcripts for toxicity, bias, and misinformation. Be objective and thorough.'
+            content: 'You are an expert content moderator analyzing video transcripts for toxicity, bias, and misinformation. Be objective and provide a concise analysis.'
           },
           {
             role: 'user',
@@ -337,21 +345,26 @@ Format your response as a structured analysis.`;
           }
         ],
         temperature: 0.3,
-        max_tokens: 1000
-      })
+        max_tokens: 400  // Reduced further to speed up response
+      }),
+      signal: controller.signal
     });
 
-    console.log(response);
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`OpenAI API error: ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json() as any;
     return data.choices[0].message.content;
-    
+
   } catch (error) {
-    return `Error analyzing content: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('OpenAI request timed out after 15 seconds');
+    }
+    throw new Error(`Error analyzing content: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
@@ -509,6 +522,10 @@ Format your response as JSON with these fields:
   "analysis": string
 }`;
 
+    // Create an AbortController with a 20 second timeout (shorter for fallback)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -520,7 +537,7 @@ Format your response as JSON with these fields:
         messages: [
           {
             role: 'system',
-            content: 'You are an expert content moderator analyzing YouTube videos for toxicity, bias, and emotional impact. Be objective and thorough.'
+            content: 'You are an expert content moderator analyzing YouTube videos for toxicity, bias, and emotional impact. Be objective and provide concise analysis.'
           },
           {
             role: 'user',
@@ -528,12 +545,16 @@ Format your response as JSON with these fields:
           }
         ],
         temperature: 0.3,
-        max_tokens: 1000
-      })
+        max_tokens: 500  // Reduced from 1000 to speed up response
+      }),
+      signal: controller.signal
     });
 
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`OpenAI API error: ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json() as any;
