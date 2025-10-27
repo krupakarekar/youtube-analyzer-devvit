@@ -176,22 +176,21 @@ function getFullTranscriptText(transcript: any[]): string {
 
 // Main analysis function using transcripts (converted from Python script)
 async function analyzeVideoWithTranscript(videoId: string): Promise<YouTubeAnalysisResult | { error: string }> {
-  try {
-    console.log(`🎥 Video ID: ${videoId}`);
-    console.log('='.repeat(80));
+  console.log(`🎥 Video ID: ${videoId}`);
+  console.log('='.repeat(80));
 
-    // Fetch transcript using JavaScript package
-    console.log('\n📥 Fetching transcript...');
-    let transcript;
-    try {
-      transcript = await YoutubeTranscript.fetchTranscript(videoId);
-      console.log('✅ Transcript fetch successful');
-    } catch (transcriptError) {
-      console.error('❌ Transcript fetch failed:', transcriptError);
-      // Try fallback to metadata-based analysis
-      console.log('⚠️ Attempting fallback to metadata-based analysis...');
-      return await fallbackToMetadataAnalysis(videoId, transcriptError);
-    }
+  // Fetch transcript using JavaScript package
+  console.log('\n📥 Fetching transcript...');
+  let transcript;
+  try {
+    transcript = await YoutubeTranscript.fetchTranscript(videoId);
+    console.log('✅ Transcript fetch successful');
+  } catch (transcriptError) {
+    console.error('❌ Transcript fetch failed:', transcriptError);
+    // Try fallback to metadata-based analysis
+    console.log('⚠️ Attempting fallback to metadata-based analysis...');
+    return await fallbackToMetadataAnalysis(videoId, transcriptError);
+  }
 
     console.log(`\n✅ Transcript retrieved: ${transcript.length} entries`);
 
@@ -247,15 +246,34 @@ async function analyzeVideoWithTranscript(videoId: string): Promise<YouTubeAnaly
 
 // Fallback function for metadata-based analysis when transcript is unavailable
 async function fallbackToMetadataAnalysis(videoId: string, originalError: any): Promise<YouTubeAnalysisResult | { error: string }> {
+  console.log('📋 Fetching video metadata for fallback analysis...');
   try {
-    console.log('📋 Fetching video metadata for fallback analysis...');
     const videoInfo = await getYouTubeVideoInfo(videoId);
+    console.log('✅ Video metadata fetched successfully');
+    console.log('🔍 Analyzing video metadata...');
     const fallbackAnalysis = await analyzeVideoContent(videoId, videoInfo);
+    console.log('✅ Metadata analysis completed');
     return fallbackAnalysis;
   } catch (fallbackError) {
-    console.error('❌ Fallback analysis also failed:', fallbackError);
+    console.error('❌ Fallback analysis failed:', fallbackError);
+    // Return a proper YouTubeAnalysisResult with default values
     return {
-      error: `Analysis failed: ${originalError instanceof Error ? originalError.message : 'Unknown error'}. Fallback also failed: ${fallbackError instanceof Error ? fallbackError.message : 'Unknown error'}`
+      videoId,
+      title: `Video ${videoId}`,
+      channelName: 'Unknown Channel',
+      publishDate: new Date().toISOString(),
+      thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+      toxicityScore: 5,
+      biasTags: ['Analysis Unavailable'],
+      emotions: {
+        anger: 0.1,
+        joy: 0.1,
+        trust: 0.1,
+        fear: 0.1,
+        sadness: 0.1,
+        surprise: 0.1,
+        disgust: 0.1
+      }
     };
   }
 }
@@ -308,6 +326,8 @@ Format your response as a structured analysis.`;
         max_tokens: 1000
       })
     });
+
+    console.log(response);
 
     if (!response.ok) {
       throw new Error(`OpenAI API error: ${response.statusText}`);
