@@ -176,21 +176,22 @@ function getFullTranscriptText(transcript: any[]): string {
 
 // Main analysis function using transcripts (converted from Python script)
 async function analyzeVideoWithTranscript(videoId: string): Promise<YouTubeAnalysisResult | { error: string }> {
-  console.log(`🎥 Video ID: ${videoId}`);
-  console.log('='.repeat(80));
-
-  // Fetch transcript using JavaScript package
-  console.log('\n📥 Fetching transcript...');
-  let transcript;
   try {
-    transcript = await YoutubeTranscript.fetchTranscript(videoId);
-    console.log('✅ Transcript fetch successful');
-  } catch (transcriptError) {
-    console.error('❌ Transcript fetch failed:', transcriptError);
-    // Try fallback to metadata-based analysis
-    console.log('⚠️ Attempting fallback to metadata-based analysis...');
-    return await fallbackToMetadataAnalysis(videoId, transcriptError);
-  }
+    console.log(`🎥 Video ID: ${videoId}`);
+    console.log('='.repeat(80));
+
+    // Fetch transcript using JavaScript package
+    console.log('\n📥 Fetching transcript...');
+    let transcript;
+    try {
+      transcript = await YoutubeTranscript.fetchTranscript(videoId);
+      console.log('✅ Transcript fetch successful');
+    } catch (transcriptError) {
+      console.error('❌ Transcript fetch failed:', transcriptError);
+      // Try fallback to metadata-based analysis
+      console.log('⚠️ Attempting fallback to metadata-based analysis...');
+      return await fallbackToMetadataAnalysis(videoId, transcriptError);
+    }
 
     console.log(`\n✅ Transcript retrieved: ${transcript.length} entries`);
 
@@ -236,12 +237,12 @@ async function analyzeVideoWithTranscript(videoId: string): Promise<YouTubeAnaly
 
   } catch (error) {
     console.error('Error in analyzeVideoWithTranscript:', error);
-
     // Return error object
     return {
       error: error instanceof Error ? error.message : 'Unknown error occurred'
     };
   }
+}
 }
 
 // Fallback function for metadata-based analysis when transcript is unavailable
