@@ -1,0 +1,26 @@
+{
+  "name": "youtube-transcript-fetcher",
+  "version": "1.0.0",
+  "description": "A TypeScript program to fetch YouTube video transcripts",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "keywords": [
+    "youtube",
+    "transcript",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@egoist/youtube-transcript-plus": "^1.1.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.0"
+  }
+}

@@ -2,7 +2,7 @@ import express from 'express';
 import { InitResponse, IncrementResponse, DecrementResponse, YouTubeAnalysisResult } from '../shared/types/api';
 import { redis, reddit, createServer, context, getServerPort, settings } from '@devvit/web/server';
 import { createPost } from './core/post';
-import { YoutubeTranscript } from 'youtube-transcript';
+import { fetchTranscript } from '../lib/youtube-transcript-fetcher/dist/transcript';
 
 const app = express();
 
@@ -167,7 +167,13 @@ router.post<unknown, YouTubeAnalysisResult | { error: string; message: string },
 );
 
 // Helper function to combine transcript entries into full text
-function getFullTranscriptText(transcript: any[]): string {
+interface TranscriptItem {
+  text: string;
+  duration: number;
+  offset: number;
+}
+
+function getFullTranscriptText(transcript: TranscriptItem[]): string {
   return transcript
     .map(entry => entry.text)
     .join(' ')
@@ -184,23 +190,24 @@ async function analyzeVideoWithTranscript(videoId: string): Promise<YouTubeAnaly
     console.log('\n📥 Fetching transcript...');
     let transcript;
     try {
-      transcript = await YoutubeTranscript.fetchTranscript(videoId);
+      // Use the new transcript fetcher
+      transcript = await fetchTranscript(videoId);
       console.log('✅ Transcript fetch successful');
+
+      // The new library returns an array of transcript items with text, duration, and offset
+      if (!transcript || transcript.length === 0) {
+        console.log('⚠️ No transcript available for this video');
+        // Try fallback to metadata-based analysis
+        console.log('⚠️ Attempting fallback to metadata-based analysis...');
+        return await fallbackToMetadataAnalysis(videoId, new Error('No transcript available'));
+      }
+
+      console.log(`\n✅ Transcript retrieved: ${transcript.length} entries`);
     } catch (transcriptError) {
       console.error('❌ Transcript fetch failed:', transcriptError);
       // Try fallback to metadata-based analysis
       console.log('⚠️ Attempting fallback to metadata-based analysis...');
       return await fallbackToMetadataAnalysis(videoId, transcriptError);
-    }
-
-    console.log(`\n✅ Transcript retrieved: ${transcript.length} entries`);
-
-    // Check if transcript is empty
-    if (transcript.length === 0) {
-      console.log('⚠️ No transcript available for this video');
-      // Try fallback to metadata-based analysis
-      console.log('⚠️ Attempting fallback to metadata-based analysis...');
-      return await fallbackToMetadataAnalysis(videoId, new Error('No transcript available'));
     }
 
     // Show first few entries
@@ -246,7 +253,7 @@ async function analyzeVideoWithTranscript(videoId: string): Promise<YouTubeAnaly
 }
 
 // Fallback function for metadata-based analysis when transcript is unavailable
-async function fallbackToMetadataAnalysis(videoId: string, originalError: any): Promise<YouTubeAnalysisResult | { error: string }> {
+async function fallbackToMetadataAnalysis(videoId: string, _originalError: any): Promise<YouTubeAnalysisResult | { error: string }> {
   console.log('📋 Fetching video metadata for fallback analysis...');
   try {
     const videoInfo = await getYouTubeVideoInfo(videoId);
