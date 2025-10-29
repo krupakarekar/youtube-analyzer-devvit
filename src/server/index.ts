@@ -129,6 +129,14 @@ router.post('/internal/menu/post-create', async (_req, res): Promise<void> => {
 router.post<unknown, YouTubeAnalysisResult | { error: string; message: string }, { url: string; videoId: string }>(
   '/api/analyze',
   async (req, res): Promise<void> => {
+    // Set a longer timeout for this endpoint (60 seconds)
+    req.setTimeout(60000);
+    res.setTimeout(60000);
+
+    // Send keep-alive headers to prevent connection timeout
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Keep-Alive', 'timeout=60');
+
     try {
       const { videoId } = req.body;
 
@@ -158,10 +166,14 @@ router.post<unknown, YouTubeAnalysisResult | { error: string; message: string },
 
     } catch (error) {
       console.error('YouTube analysis error:', error);
-      res.status(500).json({
-        error: 'ANALYSIS_FAILED',
-        message: error instanceof Error ? error.message : 'Unknown error occurred',
-      });
+      
+      // Make sure we haven't already sent a response
+      if (!res.headersSent) {
+        res.status(500).json({
+          error: 'ANALYSIS_FAILED',
+          message: error instanceof Error ? error.message : 'Unknown error occurred',
+        });
+      }
     }
   }
 );
@@ -180,7 +192,7 @@ function getFullTranscriptText(transcript: TranscriptItem[]): string {
     .trim();
 }
 
-// Main analysis function using transcripts (converted from Python script)
+// Main analysis function using transcripts 
 async function analyzeVideoWithTranscript(videoId: string): Promise<YouTubeAnalysisResult | { error: string }> {
   try {
     console.log(`🎥 Video ID: ${videoId}`);
@@ -634,6 +646,29 @@ Format your response as JSON with these fields:
 
 // Use router middleware
 app.use(router);
+
+// Global error handler for unhandled errors
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('Unhandled error:', err);
+  if (!res.headersSent) {
+    res.status(500).json({
+      error: 'INTERNAL_SERVER_ERROR',
+      message: err.message || 'An unexpected error occurred'
+    });
+  }
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason: unknown) => {
+  console.error('Unhandled Promise Rejection:', reason);
+  // Don't exit the process, just log the error
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error: Error) => {
+  console.error('Uncaught Exception:', error);
+  // Don't exit the process, just log the error
+});
 
 // Get port from environment variable with fallback
 const port = getServerPort();
