@@ -11,3 +11,4 @@ dist
 .env
 devvit.local.json
 devvit.json
+src/server/analyzer.ts
