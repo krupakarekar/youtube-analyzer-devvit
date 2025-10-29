@@ -24,16 +24,8 @@ export type YouTubeAnalysisResult = {
   publishDate: string;
   thumbnail: string;
   toxicityScore: number; // 0-10
+  summary: string; // Brief analysis summary
   biasTags: string[];
-  emotions: {
-    anger: number;
-    joy: number;
-    trust: number;
-    fear: number;
-    sadness: number;
-    surprise: number;
-    disgust: number;
-  };
 };
 
 export type AnalysisError = {

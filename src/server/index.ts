@@ -4,6 +4,8 @@ import { redis, reddit, createServer, context, getServerPort, settings } from '@
 import { createPost } from './core/post';
 import { fetchTranscript } from '@egoist/youtube-transcript-plus';
 
+console.log('✅ Server starting - fetchTranscript imported:', typeof fetchTranscript);
+
 const app = express();
 
 // Middleware for JSON body parsing
@@ -150,9 +152,9 @@ router.post<unknown, YouTubeAnalysisResult | { error: string; message: string },
 
       console.log(`Starting YouTube analysis for video ID: ${videoId}`);
 
-      // Use transcript-based analysis
-      const analysisResult = await analyzeVideoWithTranscript(videoId);
-      
+      // Use metadata-based analysis as primary method (transcript fetching often hits rate limits)
+      const analysisResult = await analyzeVideoWithMetadata(videoId);
+
       if ('error' in analysisResult) {
         res.status(500).json({
           error: 'ANALYSIS_FAILED',
@@ -192,40 +194,121 @@ function getFullTranscriptText(transcript: TranscriptItem[]): string {
     .trim();
 }
 
-// Main analysis function using transcripts 
-async function analyzeVideoWithTranscript(videoId: string): Promise<YouTubeAnalysisResult | { error: string }> {
+// Primary analysis function using video metadata (avoids rate limits from transcript scraping)
+async function analyzeVideoWithMetadata(videoId: string): Promise<YouTubeAnalysisResult | { error: string }> {
+  console.log('🚀 ===== STARTING METADATA-BASED ANALYSIS =====');
+  console.log(`🎥 Video ID: ${videoId}`);
+
   try {
-    console.log(`🎥 Video ID: ${videoId}`);
+    console.log('📋 Fetching video metadata from YouTube API...');
+    const videoInfo = await getYouTubeVideoInfo(videoId);
+    console.log('✅ Video metadata fetched successfully');
+    console.log(`   Title: ${videoInfo.title}`);
+    console.log(`   Channel: ${videoInfo.channelName}`);
+    console.log(`   Description length: ${videoInfo.description?.length || 0} characters`);
+
+    console.log('🔍 Analyzing video content with OpenAI...');
+    const analysisResult = await analyzeVideoContent(videoId, videoInfo);
+    console.log('✅ Analysis completed successfully');
+    console.log('📊 Analysis result:', JSON.stringify(analysisResult, null, 2).substring(0, 500));
+
+    return analysisResult;
+  } catch (error) {
+    console.error('❌ Metadata analysis failed:');
+    console.error('   Error type:', error instanceof Error ? error.constructor.name : typeof error);
+    console.error('   Error message:', error instanceof Error ? error.message : String(error));
+    console.error('   Full error:', error);
+    console.error('   Stack trace:', error instanceof Error ? error.stack : 'N/A');
+    return {
+      error: error instanceof Error ? error.message : 'Unknown error occurred during analysis'
+    };
+  }
+}
+
+// Optional: Transcript-based analysis (currently disabled due to rate limits)
+// This function is kept for future use if rate limiting issues are resolved
+async function analyzeVideoWithTranscript(videoId: string): Promise<YouTubeAnalysisResult | { error: string }> {
+  console.log('🚀 ===== STARTING analyzeVideoWithTranscript =====');
+  console.log(`🎥 Video ID: ${videoId}`);
+  console.log(`🔍 fetchTranscript available: ${typeof fetchTranscript}`);
+  try {
     console.log('='.repeat(80));
 
-    // Fetch transcript using JavaScript package
+    // Fetch transcript using JavaScript package with retry logic
     console.log('\n📥 Fetching transcript...');
+    console.log(`🔍 Video ID being used: "${videoId}"`);
+    console.log(`🔍 Video URL would be: https://www.youtube.com/watch?v=${videoId}`);
     let transcript;
-    try {
-      // Use youtube-transcript-plus to fetch transcript
-      const response = await fetchTranscript(videoId);
-      
-      if (!response || !response.segments || response.segments.length === 0) {
-        console.log('⚠️ No transcript available for this video');
-        // Try fallback to metadata-based analysis
-        console.log('⚠️ Attempting fallback to metadata-based analysis...');
-        return await fallbackToMetadataAnalysis(videoId, new Error('No transcript available'));
-      }
 
-      // Map the response segments to our TranscriptItem interface
-      transcript = response.segments.map((segment: { text: string; duration: number; offset: number }) => ({
-        text: segment.text,
-        duration: segment.duration,
-        offset: segment.offset
-      }));
-      
-      console.log('✅ Transcript fetch successful');
-      console.log(`\n✅ Transcript retrieved: ${transcript.length} entries`);
-    } catch (transcriptError) {
-      console.error('❌ Transcript fetch failed:', transcriptError);
-      // Try fallback to metadata-based analysis
-      console.log('⚠️ Attempting fallback to metadata-based analysis...');
-      return await fallbackToMetadataAnalysis(videoId, transcriptError);
+    // Try to fetch transcript with retry logic (max 3 attempts)
+    const maxRetries = 3;
+    let lastError: any = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🌐 Attempt ${attempt}/${maxRetries}: Calling fetchTranscript()...`);
+
+        // Add delay between retries (exponential backoff)
+        if (attempt > 1) {
+          const delayMs = Math.pow(2, attempt - 1) * 1000; // 2s, 4s, 8s...
+          console.log(`⏳ Waiting ${delayMs}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+
+        const response: any = await fetchTranscript(videoId);
+        console.log(`✅ fetchTranscript() returned successfully on attempt ${attempt}`);
+        console.log(`🔍 Response type: ${Array.isArray(response) ? 'Array' : typeof response}`);
+        console.log(`🔍 Response structure:`, JSON.stringify(response, null, 2).substring(0, 500));
+
+        // The library may return an array of segments OR an object with a `segments` array
+        const segments: Array<{ text: string; duration?: number; offset?: number; start?: number }> =
+          Array.isArray(response) ? response : response?.segments;
+
+        console.log(`🔍 Segments extracted: ${segments ? `${segments.length} items` : 'null/undefined'}`);
+
+        if (!segments || segments.length === 0) {
+          console.log('⚠️ No transcript available for this video (empty response)');
+          console.log('⚠️ Response was:', JSON.stringify(response));
+          console.log('⚠️ Falling back to metadata analysis...');
+          return await analyzeVideoWithMetadata(videoId);
+        }
+
+        // Normalize segment fields to our TranscriptItem interface
+        transcript = segments.map((segment) => ({
+          text: segment.text,
+          duration: typeof segment.duration === 'number' ? segment.duration : 0,
+          offset: typeof segment.offset === 'number' ? segment.offset : (typeof segment.start === 'number' ? segment.start : 0),
+        }));
+
+        console.log('✅ Transcript fetch successful');
+        console.log(`✅ Transcript retrieved: ${transcript.length} entries`);
+        console.log(`✅ First segment text: "${transcript[0]?.text}"`);
+
+        // Success! Break out of retry loop
+        break;
+
+      } catch (transcriptError) {
+        lastError = transcriptError;
+        const errorMsg = transcriptError instanceof Error ? transcriptError.message : String(transcriptError);
+
+        // Check if it's a rate limit error (429)
+        const isRateLimit = errorMsg.includes('429') || errorMsg.includes('Too Many Requests');
+
+        console.error(`❌ Attempt ${attempt}/${maxRetries} failed:`);
+        console.error('❌ Error type:', transcriptError instanceof Error ? transcriptError.constructor.name : typeof transcriptError);
+        console.error('❌ Error message:', errorMsg);
+        console.error('❌ Is rate limit error:', isRateLimit);
+
+        // If it's the last attempt or not a rate limit error, give up
+        if (attempt === maxRetries || !isRateLimit) {
+          console.error('❌ All retry attempts exhausted or non-retryable error');
+          console.error('❌ Full error object:', transcriptError);
+          console.log('⚠️ Falling back to metadata analysis...');
+          return await analyzeVideoWithMetadata(videoId);
+        }
+
+        console.log(`⚠️ Rate limit detected, will retry (attempt ${attempt + 1}/${maxRetries})...`);
+      }
     }
 
     // Show first few entries
@@ -248,13 +331,18 @@ async function analyzeVideoWithTranscript(videoId: string): Promise<YouTubeAnaly
     // Analyze content with OpenAI
     console.log('\n🔍 Analyzing content with AI...');
     console.log('='.repeat(80));
+    console.log(`📊 Sending ${limitedText.length} characters to OpenAI...`);
 
     let analysis;
     try {
       analysis = await analyzeContent(limitedText);
       console.log('✅ OpenAI analysis successful');
+      console.log(`✅ Analysis result length: ${analysis.length} characters`);
     } catch (analysisError) {
-      console.error('❌ OpenAI analysis failed:', analysisError);
+      console.error('❌ OpenAI analysis failed:');
+      console.error('❌ Error type:', analysisError instanceof Error ? analysisError.constructor.name : typeof analysisError);
+      console.error('❌ Error message:', analysisError instanceof Error ? analysisError.message : String(analysisError));
+      console.error('❌ Full error:', analysisError);
       throw new Error(`OpenAI analysis failed: ${analysisError instanceof Error ? analysisError.message : 'Unknown error'}`);
     }
 
@@ -275,39 +363,6 @@ async function analyzeVideoWithTranscript(videoId: string): Promise<YouTubeAnaly
   }
 }
 
-// Fallback function for metadata-based analysis when transcript is unavailable
-async function fallbackToMetadataAnalysis(videoId: string, _originalError: any): Promise<YouTubeAnalysisResult | { error: string }> {
-  console.log('📋 Fetching video metadata for fallback analysis...');
-  try {
-    const videoInfo = await getYouTubeVideoInfo(videoId);
-    console.log('✅ Video metadata fetched successfully');
-    console.log('🔍 Analyzing video metadata...');
-    const fallbackAnalysis = await analyzeVideoContent(videoId, videoInfo);
-    console.log('✅ Metadata analysis completed');
-    return fallbackAnalysis;
-  } catch (fallbackError) {
-    console.error('❌ Fallback analysis failed:', fallbackError);
-    // Return a proper YouTubeAnalysisResult with default values
-    return {
-      videoId,
-      title: `Video ${videoId}`,
-      channelName: 'Unknown Channel',
-      publishDate: new Date().toISOString(),
-      thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-      toxicityScore: 5,
-      biasTags: ['Analysis Unavailable'],
-      emotions: {
-        anger: 0.1,
-        joy: 0.1,
-        trust: 0.1,
-        fear: 0.1,
-        sadness: 0.1,
-        surprise: 0.1,
-        disgust: 0.1
-      }
-    };
-  }
-}
 
 // OpenAI analysis function (converted from Python)
 async function analyzeContent(transcriptText: string): Promise<string> {
@@ -507,7 +562,7 @@ async function analyzeVideoContent(videoId: string, videoInfo: any): Promise<You
     }
 
     // Create analysis prompt
-    const prompt = `Analyze the following YouTube video for toxicity, bias, and emotional impact:
+    const prompt = `Analyze the following YouTube video for toxicity and bias:
 
 Title: ${videoInfo.title}
 Channel: ${videoInfo.channelName}
@@ -515,23 +570,14 @@ Description: ${videoInfo.description?.substring(0, 1000) || 'No description avai
 
 Please provide:
 1. Toxicity score (0-10, where 10 is highly toxic)
-2. Bias assessment (types of bias detected)
-3. Emotional impact analysis (provide values between 0 and 1 for: anger, joy, trust, fear, sadness, surprise, disgust)
+2. Brief summary (2-3 sentences explaining the key findings)
+3. Bias assessment - List any detected biases from: Political, Cultural, Gender, Racial, Religious, Economic, Ideological. If no specific biases detected, use ["None Detected"]
 
 Format your response as JSON with these fields:
 {
   "toxicityScore": number,
-  "biasTags": string[],
-  "emotions": {
-    "anger": number,
-    "joy": number,
-    "trust": number,
-    "fear": number,
-    "sadness": number,
-    "surprise": number,
-    "disgust": number
-  },
-  "analysis": string
+  "summary": string,
+  "biasTags": string[] (must always include at least one value, even if it's "None Detected")
 }`;
 
     // Create an AbortController with a 20 second timeout (shorter for fallback)
@@ -584,63 +630,58 @@ Format your response as JSON with these fields:
       }
     } catch (parseError) {
       console.error('Failed to parse OpenAI response:', parseError);
+      console.error('Raw analysisText:', analysisText);
       // Fallback to default values
       analysisData = {
         toxicityScore: 5,
-        biasTags: ['Unknown'],
-        emotions: {
-          anger: 0.3,
-          joy: 0.4,
-          trust: 0.5,
-          fear: 0.2,
-          sadness: 0.3,
-          surprise: 0.4,
-          disgust: 0.2
-        },
-        analysis: analysisText
+        summary: analysisText.substring(0, 300) || 'Unable to generate summary. Please try again.',
+        biasTags: ['Analysis Format Error']
       };
+      console.log('📊 Using fallback analysisData with biasTags:', analysisData.biasTags);
     }
 
-    return {
+    console.log('📊 analysisData from OpenAI:', analysisData);
+    console.log('📊 analysisData.toxicityScore:', analysisData.toxicityScore);
+
+    const result = {
       videoId,
       title: videoInfo.title,
       channelName: videoInfo.channelName,
       publishDate: videoInfo.publishDate,
       thumbnail: videoInfo.thumbnail,
       toxicityScore: analysisData.toxicityScore || 5,
-      biasTags: analysisData.biasTags || [],
-      emotions: analysisData.emotions || {
-        anger: 0.3,
-        joy: 0.4,
-        trust: 0.5,
-        fear: 0.2,
-        sadness: 0.3,
-        surprise: 0.4,
-        disgust: 0.2
-      }
+      summary: analysisData.summary || 'Analysis completed. Review the toxicity score for details.',
+      biasTags: analysisData.biasTags || ['None Detected']
     };
+
+    console.log('📊 Final result.toxicityScore:', result.toxicityScore);
+    console.log('📊 Final analysis result with biasTags:', result.biasTags);
+    return result;
 
   } catch (error) {
     console.error('Error analyzing video content:', error);
     // Return fallback analysis
-    return {
+    const fallbackResult = {
       videoId,
       title: videoInfo.title,
       channelName: videoInfo.channelName,
       publishDate: videoInfo.publishDate,
       thumbnail: videoInfo.thumbnail,
       toxicityScore: 5,
+      summary: 'Analysis could not be completed. Please try again or check your API configuration.',
       biasTags: ['Analysis Unavailable'],
-      emotions: {
-        anger: 0.1,
-        joy: 0.1,
-        trust: 0.1,
-        fear: 0.1,
-        sadness: 0.1,
-        surprise: 0.1,
-        disgust: 0.1
-      }
+      // emotions: {
+      //   anger: 0.1,
+      //   joy: 0.1,
+      //   trust: 0.1,
+      //   fear: 0.1,
+      //   sadness: 0.1,
+      //   surprise: 0.1,
+      //   disgust: 0.1
+      // }
     };
+    console.log('📊 Returning error fallback with biasTags:', fallbackResult.biasTags);
+    return fallbackResult;
   }
 }
 

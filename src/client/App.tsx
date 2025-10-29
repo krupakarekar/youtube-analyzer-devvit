@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  AlertCircle, 
-  Brain, 
-  Heart, 
-  Play, 
-  Calendar, 
-  User, 
+import {
+  AlertCircle,
+  Brain,
+  Play,
+  Calendar,
+  User,
   Loader2,
   Youtube,
   Shield,
@@ -62,6 +61,8 @@ export const App = () => {
       }
 
       const result: YouTubeAnalysisResult = await response.json();
+      console.log('📊 Frontend received result:', result);
+      console.log('📊 Frontend biasTags:', result.biasTags);
       setAnalysisResult(result);
       setState('success');
     } catch (err) {
@@ -107,7 +108,7 @@ export const App = () => {
         </h1>
           </div>
           <p className="text-gray-600 dark:text-gray-400 text-lg">
-            Analyze YouTube videos for toxicity, bias, and emotional impact
+            Analyze YouTube videos for toxicity and bias detection
           </p>
         </motion.div>
 
@@ -159,11 +160,9 @@ export const App = () => {
                 {/* Video Preview */}
                 <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
                   <div className="flex gap-4">
-                    <img
-                      src={analysisResult.thumbnail}
-                      alt={analysisResult.title}
-                      className="w-32 h-24 object-cover rounded-lg"
-                    />
+                    <div className="w-32 h-24 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Youtube className="w-12 h-12 text-red-600 dark:text-red-400" />
+                    </div>
                     <div className="flex-1">
                       <h3 className="font-semibold text-gray-900 dark:text-white text-lg mb-2 line-clamp-2">
                         {analysisResult.title}
@@ -192,22 +191,36 @@ export const App = () => {
                     <div className="flex-1">
                       <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-1">
                         <span>Score</span>
-                        <span className="font-medium">{analysisResult.toxicityScore}/10</span>
+                        <span className="font-medium">
+                          {analysisResult.toxicityScore === 5 ? 'Unknown' : `${analysisResult.toxicityScore}/10`}
+                        </span>
                       </div>
                       <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-3">
                         <motion.div
                           initial={{ width: 0 }}
-                          animate={{ width: `${(analysisResult.toxicityScore / 10) * 100}%` }}
+                          animate={{ width: `${analysisResult.toxicityScore === 5 ? 50 : (analysisResult.toxicityScore / 10) * 100}%` }}
                           transition={{ duration: 1, ease: "easeOut" }}
-                          className={`h-3 rounded-full bg-gradient-to-r ${getToxicityGradient(analysisResult.toxicityScore)}`}
+                          className={`h-3 rounded-full bg-gradient-to-r ${analysisResult.toxicityScore === 5 ? 'from-gray-400 to-gray-500' : getToxicityGradient(analysisResult.toxicityScore)}`}
                         />
                       </div>
                     </div>
-                    <div className={`px-3 py-1 rounded-full text-sm font-medium ${getToxicityColor(analysisResult.toxicityScore)}`}>
-                      {analysisResult.toxicityScore <= 3 ? 'Low' : 
+                    <div className={`px-3 py-1 rounded-full text-sm font-medium ${analysisResult.toxicityScore === 5 ? 'text-gray-600 bg-gray-200 dark:bg-gray-600 dark:text-gray-300' : getToxicityColor(analysisResult.toxicityScore)}`}>
+                      {analysisResult.toxicityScore === 5 ? 'Unknown' :
+                       analysisResult.toxicityScore <= 3 ? 'Low' :
                        analysisResult.toxicityScore <= 6 ? 'Medium' : 'High'}
                     </div>
                   </div>
+                </div>
+
+                {/* Summary */}
+                <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Brain className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                    <h4 className="font-semibold text-gray-900 dark:text-white">Analysis Summary</h4>
+                  </div>
+                  <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
+                    {analysisResult.summary}
+                  </p>
                 </div>
 
                 {/* Bias Tags */}
@@ -232,34 +245,6 @@ export const App = () => {
                     </div>
                   </div>
                 )}
-
-                {/* Emotional Impact */}
-                <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-4">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Heart className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-                    <h4 className="font-semibold text-gray-900 dark:text-white">Emotional Impact</h4>
-                  </div>
-                  <div className="space-y-3">
-                    {Object.entries(analysisResult.emotions).map(([emotion, value]) => (
-                      <div key={emotion} className="flex items-center gap-3">
-                        <span className="w-16 text-sm text-gray-600 dark:text-gray-400 capitalize">
-                          {emotion}
-                        </span>
-                        <div className="flex-1 bg-gray-200 dark:bg-gray-600 rounded-full h-2">
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${value * 100}%` }}
-                            transition={{ duration: 1, delay: 0.2, ease: "easeOut" }}
-                            className="h-2 bg-gradient-to-r from-purple-400 to-pink-500 rounded-full"
-                          />
-                        </div>
-                        <span className="w-8 text-sm text-gray-600 dark:text-gray-400 text-right">
-                          {Math.round(value * 100)}%
-        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
 
                 {/* Reset Button */}
                 <div className="flex justify-center pt-4">
