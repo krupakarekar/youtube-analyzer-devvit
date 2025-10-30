@@ -580,9 +580,9 @@ Format your response as JSON with these fields:
   "biasTags": string[] (must always include at least one value, even if it's "None Detected")
 }`;
 
-    // Create an AbortController with a 20 second timeout (shorter for fallback)
+    // Create an AbortController with a 45 second timeout (production needs more time)
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    const timeoutId = setTimeout(() => controller.abort(), 45000);
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
